@@ -1,0 +1,340 @@
+#include "Control_Arc.h"
+#include "sys.h"
+#include "delay.h"
+#include "usart.h"
+#include "GYRO_Lib.h"
+#include "Basal_Move.h"
+#include "PID_Parameter.h"
+#include "PID_forward.h"
+#include "beep.h"
+#include "can.h"
+#include "PID_forward.h"
+#include "Route_Control.h"
+#include "usart3.h"
+extern s16 targetX, targetY1, targetA;
+extern int32_t Stop_flag;
+extern u8 Step_flag;
+extern u8 Start_flag;
+/*弧线路径更新*/
+void UpdateRoute_Arc(int32_t count)
+{
+	SetupArc(0,0,-750,750,0,750,1,count);
+}
+/*弧线参数设定*/
+void SetupArc(int32_t x0, int32_t y0, 
+              int32_t x1, int32_t y1,
+              int32_t cx, int32_t cy, 
+              int8_t Dir, int32_t count)
+{
+     route_arc  RouteToSet;
+	   memset(&RouteToSet,0,sizeof(route_arc));
+	   /*设置起点*/
+     RouteToSet.start.x = x0;
+	   RouteToSet.start.y = y0;
+	   /*设置终点*/
+	   RouteToSet.end.x = x1;
+	   RouteToSet.end.y = y1;
+     /*设置圆心*/
+	   RouteToSet.center.x = cx;
+	   RouteToSet.center.y = cy;
+	   /*设置旋转方向，1:顺时针； 0:逆时针*/ 
+	   RouteToSet.dir = Dir;
+	   /*程序更新次数*/
+	   RouteToSet.count = count;
+	
+	   Calculate_Arc(&RouteToSet);/*弧线路径计算*/
+}		
+
+/*弧线路径计算*/
+void Calculate_Arc(route_arc * NewRoute)
+{
+    /*弧线半径*/
+//   	int32_t R = get_len(NewRoute->start,NewRoute->center);
+	  /*弧线微分角度*/
+//	  float d_angle = PI/(2*N);
+	  float d_len10 = (float)NewRoute->count / (float)N10;
+	  float d_len20 = (float)NewRoute->count / (float)N20;
+	  float d_len40 = (float)NewRoute->count / (float)N40;
+	  float d_len50 = (float)NewRoute->count / (float)N50;
+	  float d_len60 = (float)NewRoute->count / (float)N60;
+	  float d_len80 = (float)NewRoute->count / (float)N80;
+	  float d_len100 = (float)NewRoute->count / (float)N100;
+	  float d_len120 = (float)NewRoute->count / (float)N120;	
+	  float d_len150 = (float)NewRoute->count / (float)N150;
+	  float d_len200 = (float)NewRoute->count / (float)N200;
+		float d_len250 = (float)NewRoute->count / (float)N250;
+	  float d_len300 = (float)NewRoute->count / (float)N300;
+	  /*弧线下一周期目标坐标*/	
+	if(Start_flag==1)
+	{
+		
+	  if (Step_flag == 1)    //o-->A
+		{
+			targetX = 0 - 1050*d_len100;
+			targetY1 = 0 + 900*d_len100;
+			setup_PID(1000,200,1300,1300,
+			          500,100,1400,1400,
+			          500,100,1400,1400);
+		}
+		if(Step_flag == 2)    //A-->B
+		{
+			targetX = -1050 + 0;
+			targetY1 = 900 + 700*d_len60;
+			setup_PID(1000,200,1300,1300,
+			          500,100,1400,1400,
+			          500,100,1800,1800);
+		}
+		if(Step_flag == 3)    //B-->C
+		{
+			targetX = -1050 + 1050*d_len100;
+			targetY1 = 1600 + 800*d_len100;
+			setup_PID(1000,200,1300,1300,
+			          500,100,1400,1400,
+			          500,100,1400,1400);
+		}
+		if(Step_flag == 4)   //C-->D
+		{
+			targetX = 0 + 0;
+			targetY1 = 2400 + 650*d_len60;
+			setup_PID(1000,200,1300,1300,
+			          500,100,1400,1400,
+			          500,100,1800,1800);
+		}
+		if(Step_flag == 5)   //D-->E
+		{
+	    targetX = 0 - 1050*d_len100;
+			targetY1 = 3050 + 750*d_len100;
+			setup_PID(1000,200,1300,1300,
+			          500,100,1400,1400,
+			          500,100,1400,1400);
+		}
+		if(Step_flag == 6)   //E-->F
+		{
+			targetX = -1050 + 0;
+			targetY1 = 3800 + 700*d_len60;
+			setup_PID(1000,200,1300,1300,
+			          500,100,1400,1400,
+			          500,100,1800,1800);
+		}
+		if(Step_flag == 7)   //F-->M
+		{
+			targetX = -1050 + 480*d_len80;
+			targetY1 = 4500 + 800*d_len80;
+			setup_PID(1000,200,1300,1300,
+			          500,100,900,900,
+			          500,100,1400,1400);
+		}
+		if(Step_flag == 8)   //M-->N
+		{
+			targetX = -570 + 0;
+			targetY1 = 5300 + 2300*d_len150;
+			setup_PID(1000,200,1300,1300,
+			          500,100,900,900             ,
+			          500,100,1800,1800);
+		}
+		if(Step_flag == 9)   //N-->Q
+		{
+			targetX = -570 + 0;
+			targetY1 = 7600 + 250*d_len20;
+			setup_PID(1000,200,1300,1300,
+			          500,100,800,800,
+			          500,100,800,800);
+		}
+		
+		if(Step_flag == 10)   //Q-->W  去交接，同时车身自转
+		{
+			targetX = -570 - 3880*d_len250;
+			targetY1 = 7850 + 0;
+			targetA = -90;
+			setup_PID(1000,200,1500,1500,
+			          500,100,1700,1700,
+			          500,100,500,500);
+		}
+		
+		if(Step_flag == 11)   //W-->X 交接刹车,打开交接
+		{
+			targetX = -4450 - 300*d_len40;
+			targetY1 = 7800 + 0;
+			targetA = -90;
+			setup_PID(1000,200,1300,1300,
+			          500,100,400,400,
+			          500,100,500,500);
+			USART_SendData(USART3,0x01);
+		}
+		
+	}
+	
+	if(Start_flag == 3)			  //第二步：去抓兽骨		 
+		{	
+			if(Step_flag == 1)   //X-->Y，角度转回
+			{
+				targetX = -4750;
+				targetY1 = 7800;
+				targetA = 0;
+				setup_PID(1000,200,500,500,
+				          500,100,200,200,
+				          500,100,200,200);
+				USART_SendData(USART3,0x03);//转回交接
+			}
+			if(Step_flag == 2)   //爪子张开，上层放下
+			{
+				targetX = -4750 + 0;
+				targetY1 = 7800 + 150*d_len300;
+				targetA = 0;
+				setup_PID(1000,200,500,500,
+				          500,100,500,500,
+				          500,100,500,500);
+				USART_SendData(USART3,0x04);//爪子张开，电机转下		
+			}
+			
+			
+		}	
+		
+	if(Start_flag == 5)			  //第三步：抓取兽骨 且 进入等待位置 
+		{	
+			if(Step_flag == 1)   //抓取兽骨
+			{
+				USART_SendData(USART3,0x05);//抓取兽骨
+			}			
+			if(Step_flag == 2)   //上层翻转
+			{
+				USART_SendData(USART3,0x06);//电机转上
+			}
+			if(Step_flag == 3)   //Y-->Z
+			{
+			targetX = -4900 + 1800*d_len200;
+			targetY1 = 7950 - 150*d_len200;
+			targetA = 0;
+			setup_PID(1000,200,500,500,
+				        500,100,500,500,
+				        500,100,500,500);
+			}					
+			
+		}	
+		
+		
+		if(Start_flag == 7)        //第四步：进入投掷区 且 进行投掷
+		{
+		 	if(Step_flag==1)          //Z-->R
+			{	 
+			targetX = -3100 + 0;
+			targetY1 = 7800 - 3700*d_len200;
+			targetA = 0;
+			setup_PID(1000,200,1300,1300,
+				        500,100,500,500,
+				        500,100,2000,2000);
+		 }
+			if(Step_flag==2)          //R-->T
+			{	 
+			targetX = -3100 + 0;
+			targetY1 = 4100 - 100*d_len10;
+			targetA = 0;
+			setup_PID(1000,200,1300,1300,
+				        500,100,300,300,
+				        500,100,300,300);
+			}
+			
+     if(Step_flag==3)          //车身自转
+		 {	
+			targetX = -3100 + 0;
+			targetY1 = 4000 + 0;
+			targetA = 0 - 40*d_len10;
+			setup_PID(1000,200,800,800,
+			          500,100,300,300,
+			          500,100,300,300); 
+		 }	
+	   if(Step_flag==4)          //装置前推
+		 {	
+			USART_SendData(USART3,0x07); 
+		 }
+	   if(Step_flag==5)          //松开爪子
+		 {	
+			USART_SendData(USART3,0x08);	 
+		 }
+		 if(Step_flag==5)          //抛兽骨
+		 {	
+			USART_SendData(USART3,0x09);	 
+		 }
+		}
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+			if(Start_flag == 20)        //回城
+		{
+		 	if(Step_flag==1)          //T-->Z
+			{	 
+			targetX = -3100 + 0;
+			targetY1 = 7800;
+			targetA = 0;
+			setup_PID(1000,200,500,500,
+			        	500,100,1000,1000,
+			        	500,100,1000,1000);
+		 }
+			if(Step_flag==2)          //Z-->Q
+			{	 
+			targetX = 0;
+			targetY1 = 7800;
+			targetA = 0;
+			setup_PID(1000,200,500,500,
+			        	500,100,1000,1000,
+			        	500,100,1000,1000);
+			}
+     if(Step_flag==3)          //Q-->O
+		 {	
+			targetX = 0;
+			targetY1 = 0;
+			targetA = 0;
+			setup_PID(1000,200,500,500,
+			          500,100,1000,1000,
+			          500,100,1000,1000);
+		 } 	
+			
+		} 
+		
+		
+}
+
+/*计算m,n两点之间的距离，单位：mm*/
+int32_t get_len(point m,point n)
+{
+	int32_t len;
+	len = my_sqrt(square(m.x-n.x)+square(m.y-n.y));
+	return len;
+}
+
+/*PID参数设定*/
+void setup_PID(int32_t Angle_P,  int32_t Angle_D,  int32_t Angle_Max,  int32_t Angle_Min,
+	             int32_t X_P,  int32_t X_D,  int32_t X_Max,  int32_t X_Min,
+               int32_t Y_P,  int32_t Y_D,  int32_t Y_Max,  int32_t Y_Min)
+{
+    	G_PID_Parameter[ROUTE_LINE].PID_Angle.Parameter.P=Angle_P;
+			G_PID_Parameter[ROUTE_LINE].PID_Angle.Parameter.I=0;
+			G_PID_Parameter[ROUTE_LINE].PID_Angle.Parameter.D=Angle_D;
+			G_PID_Parameter[ROUTE_LINE].PID_Angle.Parameter.Out_Max=Angle_Max;
+			G_PID_Parameter[ROUTE_LINE].PID_Angle.Parameter.Out_Min=-Angle_Min;					 
+			G_PID_Parameter[ROUTE_LINE].PID_Angle.Parameter.Dead_Zone=0;
+	    	    	
+	    G_PID_Parameter[ROUTE_LINE].PID_LineX.Parameter.P=X_P;
+			G_PID_Parameter[ROUTE_LINE].PID_LineX.Parameter.I=0;
+			G_PID_Parameter[ROUTE_LINE].PID_LineX.Parameter.D=X_D;
+			G_PID_Parameter[ROUTE_LINE].PID_LineX.Parameter.Out_Max=X_Max;
+			G_PID_Parameter[ROUTE_LINE].PID_LineX.Parameter.Out_Min=-X_Min;					 
+			G_PID_Parameter[ROUTE_LINE].PID_LineX.Parameter.Dead_Zone=0;
+	    
+	    G_PID_Parameter[ROUTE_LINE].PID_LineY.Parameter.P=Y_P;
+			G_PID_Parameter[ROUTE_LINE].PID_LineY.Parameter.I=0;
+			G_PID_Parameter[ROUTE_LINE].PID_LineY.Parameter.D=Y_D;
+			G_PID_Parameter[ROUTE_LINE].PID_LineY.Parameter.Out_Max=Y_Max;
+			G_PID_Parameter[ROUTE_LINE].PID_LineY.Parameter.Out_Min=-Y_Min;					 
+			G_PID_Parameter[ROUTE_LINE].PID_LineY.Parameter.Dead_Zone=0;
+
+
+}
+

@@ -1,0 +1,408 @@
+#include "Robot.h"
+#include "GYRO_Lib.h"
+#include "can.h"
+#include "DataConverTypeDef.h"
+#include "My_Flag.h"
+#include "vect.h"
+#include "My_Math.h"
+#include "usart.h"
+#include "Robot.h"
+#include "Basal_Move.h"
+#include "Time.h"
+#include "PID_Control.h"
+#include "Global.h"
+
+
+__IO float GYRO_Angle_Last = 0;
+__IO float GYRO_Angle_Now = 0;
+__IO float GYRO_Angle = 0;
+__IO int32_t GYRO_pulse_x = 0;
+__IO int32_t GYRO_pulse_y = 0;
+
+__IO EncodePointTypeDef GYRO_Location;
+
+Flag Flag_GYRO_Read = Not_Ready;
+
+
+#if defined (USE_INIT_INNER)    //使用文件内部函数初始化
+// 通信总线初始化
+static void GYRO_CAN_BUS_Init(void);
+#endif
+
+// 模块复位
+static void GYRO_Reset_Module(void);
+
+// GYRO初始化
+//-----------------------------------------------------------------------------
+void GYRO_Init(void)
+{
+
+#if defined (USE_INIT_INNER)
+    GYRO_CAN_BUS_Init();         //CAN总线初始化
+#elif defined (USE_INIT_OUTER)
+    //因为CAN总线在此函数前已经初始化完成，所以此处就不需要再用了
+    //GYRO_CAN2_Mode_Init(1, 4, 9, 3, 0);
+    //CAN2_Mode_Init(CAN_SJW_1tq, CAN_BS2_4tq, CAN_BS1_9tq, 3, CAN_Mode_Normal);
+#endif
+
+    GYRO_Reset_Module();    //复位
+
+    GYRO_Set_Angle(0);      //写入初始值
+    GYRO_Set_Position(0, 0);
+	delay_ms(20);  //每10ms更新一次
+	GYRO_Set_Angle(0);      //写入初始值
+	GYRO_Set_Position(0, 0);
+	delay_ms(20);  //每10ms更新一次
+	GYRO_Set_Angle(0);      //写入初始值
+	GYRO_Set_Position(0, 0);
+}
+
+
+//-----------------------------------------------------------------------------
+// GYRO_Set_Angle
+//-----------------------------------------------------------------------------
+//
+// Inputs : float angle
+//
+// Outputs: void
+//
+// 设置角度
+//
+//-----------------------------------------------------------------------------
+void GYRO_Set_Angle(float angle)
+{
+    uDataConvert32TypeDef temp;
+    CanTxMsg TxMessage;
+    temp.float_form = angle;
+    TxMessage.StdId = POS_CID;				//控制器 ID
+    TxMessage.DLC = 4;						//必须为 4
+    TxMessage.IDE = CAN_Id_Standard;
+    TxMessage.RTR = CAN_RTR_Data;
+    TxMessage.Data[0] = temp.u8_form[0];
+    TxMessage.Data[1] = temp.u8_form[1];
+    TxMessage.Data[2] = temp.u8_form[2];
+    TxMessage.Data[3] = temp.u8_form[3];
+    CAN_Transmit(CAN_BUS, &TxMessage);
+}
+
+void GYRO_Set_Position_X(int32_t x)
+{
+    //uDataConvert32TypeDef temp;
+    //temp.s32_form = x;
+
+    //CanTxMsg TxMessage;
+    //TxMessage.StdId = POS_CID;
+    //TxMessage.DLC = 5;       //只能为5
+    //TxMessage.IDE = CAN_Id_Standard;
+    //TxMessage.RTR = CAN_RTR_Data;
+    //memcpy(TxMessage.Data, temp.u8_form, sizeof(uDataConvert32TypeDef));
+    //CAN_Transmit(CAN_BUS, &TxMessage);
+
+//    float temp = 0;
+//    temp = (float) - x* 1/ Coder_Param;
+//    enc_x = (int32_t)temp;
+}
+
+//-----------------------------------------------------------------------------
+// GYRO_Set_tPosition
+//-----------------------------------------------------------------------------
+//
+// Inputs : int32_t pos_x
+//			int32_t pos_y
+//
+// Outputs: void
+//
+// 设置 x,y 坐标
+//
+//-----------------------------------------------------------------------------
+
+
+void GYRO_Set_Position(int32_t pos_x, int32_t pos_y)
+{
+    CanTxMsg TxMessage;
+    int32_t xx = 0, yy = 0;
+    xx = -(int32_t)(pos_x* 12.8318);								//car_x 即为要发送的 x 坐标
+    yy = -(int32_t)(pos_y* 12.5318);								//car_y 即为要发送的 y 坐标
+    TxMessage.StdId = POS_CID;				//控制器 ID
+    TxMessage.DLC = 8;//必须为 8
+    TxMessage.IDE = CAN_Id_Standard;
+    TxMessage.RTR = CAN_RTR_Data;
+    TxMessage.Data[0] = (u8)(xx >> 0);
+    TxMessage.Data[1] = (u8)(xx >> 8);
+    TxMessage.Data[2] = (u8)(xx >> 16);
+    TxMessage.Data[3] = (u8)(xx >> 24);
+    TxMessage.Data[4] = (u8)(yy >> 0);
+    TxMessage.Data[5] = (u8)(yy >> 8);
+    TxMessage.Data[6] = (u8)(yy >> 16);
+    TxMessage.Data[7] = (u8)(yy >> 24);
+    CAN_Transmit(CAN_BUS, &TxMessage);
+}
+
+
+#if defined(DEBUG_PRINTF)
+int i = 0;    //打印
+#endif
+//static float enc_x = 94.46 / 0.0797964534011807;//221.25* my_cos(64.7);    94.46/0.0797964534011807
+//static float enc_y = 244.62 / 0.0797964534011807;// 正常 码盘的中点解算                                                                 225/0.0797964534011807
+//static float enc_y = 392 / 0.0797964534011807;//   补偿
+
+static float enc_x = -95.0 / 0.0797964534011807;//221.25* my_cos(64.7);    94.46/0.0797964534011807
+static float enc_y = 239.81 / 0.0797964534011807;// 正常 码盘的中点解算       
+static int32_t last_y = 0;
+static int32_t enc_dy = 0;
+static int32_t last_x = 0;
+static int32_t enc_dx = 0;
+
+
+int Rotating_Flag = 0; 
+PointTypeDef GYRO_Get_Location(void)
+{
+    PointTypeDef now_location;
+    now_location.Angle = GYRO_Location.Angle;
+    now_location.Coords.x = (s32)(GYRO_Location.x)+ X_Offset_Camera;
+    now_location.Coords.y = (s32)(GYRO_Location.y)+ Y_OffsetCameraRightAngle + Y_OffsetCameraCross ;
+    return now_location;
+}
+
+//===============================================================================
+
+//-----------------------------------------------------------------------------
+// Static Function
+// 内部函数
+//-----------------------------------------------------------------------------
+
+
+//-----------------------------------------------------------------------------
+// GYRO_CAN2_Init
+//-----------------------------------------------------------------------------
+//
+// Inputs : void
+//
+//
+// GYRO 配置函数 使用CAN2
+//
+//-----------------------------------------------------------------------------
+#if defined (USE_INIT_INNER)    //使用文件内部函数初始化
+static void GYRO_CAN_BUS_Init(void)
+{
+
+    GPIO_InitTypeDef Gpio_Structure;
+    CAN_InitTypeDef Can_Structure;
+    NVIC_InitTypeDef NVIC_InitStructure;
+    CAN_FilterInitTypeDef Can_filter_Structure;
+
+#if defined (GYRO_USE_CAN1)
+    //使能相关时钟
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_CAN1, ENABLE);
+
+    //初始化GPIO PA11,PA12
+    Gpio_Structure.GPIO_Pin = GPIO_Pin_11 | GPIO_Pin_12;
+    Gpio_Structure.GPIO_Mode = GPIO_Mode_AF;    //复用功能
+    Gpio_Structure.GPIO_OType = GPIO_OType_PP;//推挽输出
+    Gpio_Structure.GPIO_Speed = GPIO_Speed_100MHz;//100MHz
+    Gpio_Structure.GPIO_PuPd = GPIO_PuPd_UP;//上拉
+    GPIO_Init(GPIOA, &Gpio_Structure);
+
+    //引脚复用映射配置
+    GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, GPIO_AF_CAN1);	//GPIOA11复用为CAN1
+    GPIO_PinAFConfig(GPIOA, GPIO_PinSource12, GPIO_AF_CAN1);	//GPIOA12复用为CAN1
+
+    //CAN单元设置
+    CAN_StructInit(&Can_Structure);
+    Can_Structure.CAN_TTCM = DISABLE;
+    Can_Structure.CAN_ABOM = DISABLE;
+    Can_Structure.CAN_AWUM = DISABLE;
+    Can_Structure.CAN_NART = DISABLE;
+    Can_Structure.CAN_RFLM = DISABLE;
+    Can_Structure.CAN_TXFP = ENABLE;
+    Can_Structure.CAN_Mode = CAN_Mode_Normal;
+    Can_Structure.CAN_SJW = CAN_SJW_1tq;        //波特率是多少1MHz
+    Can_Structure.CAN_BS1 = CAN_BS1_9tq;
+    Can_Structure.CAN_BS2 = CAN_BS2_4tq;
+    Can_Structure.CAN_Prescaler = 3;
+    CAN_Init(CAN1, &Can_Structure);
+
+    CAN_ITConfig(CAN1, CAN_IT_FMP0, ENABLE);    //FIFO0消息挂号中断允许
+
+    NVIC_InitStructure.NVIC_IRQChannel = CAN1_RX0_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+
+    Can_filter_Structure.CAN_FilterNumber = 0;     //过滤器0
+
+#elif defined (GYRO_USE_CAN2)
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_CAN1 | RCC_APB1Periph_CAN2, ENABLE);
+
+    GPIO_PinAFConfig(GPIOB, GPIO_PinSource12, GPIO_AF_CAN2);
+    GPIO_PinAFConfig(GPIOB, GPIO_PinSource13, GPIO_AF_CAN2);
+
+    Gpio_Structure.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_13;
+    Gpio_Structure.GPIO_Mode = GPIO_Mode_AF;
+    GPIO_Init(GPIOB, &Gpio_Structure);
+
+    CAN_ITConfig(CAN2, CAN_IT_FMP0, ENABLE);
+
+    CAN_StructInit(&Can_Structure);
+    Can_Structure.CAN_TTCM = DISABLE;
+    Can_Structure.CAN_ABOM = DISABLE;
+    Can_Structure.CAN_AWUM = DISABLE;
+    Can_Structure.CAN_NART = DISABLE;
+    Can_Structure.CAN_RFLM = DISABLE;
+    Can_Structure.CAN_TXFP = ENABLE;
+    Can_Structure.CAN_Mode = CAN_Mode_Normal;
+    Can_Structure.CAN_SJW = CAN_SJW_1tq;
+    Can_Structure.CAN_BS1 = CAN_BS1_9tq;
+    Can_Structure.CAN_BS2 = CAN_BS2_4tq;
+    Can_Structure.CAN_Prescaler = 3;
+    CAN_Init(CAN2, &Can_Structure);
+
+    NVIC_InitStructure.NVIC_IRQChannel = CAN2_RX0_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+
+
+    Can_filter_Structure.CAN_FilterNumber = 14;     //过滤器14
+
+#endif
+
+    Can_filter_Structure.CAN_FilterMode = CAN_FilterMode_IdMask;
+    Can_filter_Structure.CAN_FilterScale = CAN_FilterScale_32bit;
+    Can_filter_Structure.CAN_FilterIdHigh = 0x0000;
+    Can_filter_Structure.CAN_FilterIdLow = 0x0000;
+    Can_filter_Structure.CAN_FilterMaskIdHigh = 0x0000;
+    Can_filter_Structure.CAN_FilterMaskIdLow = 0x0000;
+    Can_filter_Structure.CAN_FilterFIFOAssignment = CAN_Filter_FIFO0;
+    Can_filter_Structure.CAN_FilterActivation = ENABLE;
+    CAN_FilterInit(&Can_filter_Structure);
+
+}
+#endif
+
+//-----------------------------------------------------------------------------
+// GYRO_Reset_Module
+//-----------------------------------------------------------------------------
+//
+// Inputs : void
+//
+// Outputs: void
+//
+// 模块软件复位
+//
+//-----------------------------------------------------------------------------
+static void GYRO_Reset_Module(void)
+{
+    CanTxMsg TxMessage;
+    TxMessage.StdId = POS_CID;			//控制器 ID
+    TxMessage.DLC = 2;					//必须为 2
+    TxMessage.IDE = CAN_Id_Standard;
+    TxMessage.RTR = CAN_RTR_Data;
+    TxMessage.Data[0] = 0x55;
+    TxMessage.Data[1] = 0xff;
+    CAN_Transmit(CAN_BUS, &TxMessage);
+}
+
+/*********************************************************/
+#define PI 3.1415926
+s16 encoderA = 0, encoderB = 0;
+double coordX = 0, coordY = 0;	//原始脉冲数坐标
+
+/*************************************************************************
+正交码盘解算坐标系
+参数：
+encoderA:编码器A读的值
+encoderB:编码器B读的值
+angle	:陀螺仪读出的角度
+*************************************************************************/
+void Coord_Calculte(s16 DEa, s16 DEb, float angle)
+{
+	coordX = coordX + DEa * my_sin(angle - 45) - DEb * my_sin(angle + 45);
+	coordY = coordY - DEa * my_sin(angle + 45) - DEb * my_sin(angle - 45);
+}
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if defined(GYRO_INTERRUPT_INNER_ENABLE)
+
+//-----------------------------------------------------------------------------
+// Interrupt Function
+// 中断函数
+//-----------------------------------------------------------------------------
+//CAN 接收中断：
+#if defined (GYRO_USE_CAN1)
+void CAN1_RX0_IRQHandler(void)       //使用CAN1 中断
+#elif defined (GYRO_USE_CAN2)
+void CAN2_RX0_IRQHandler(void)       //使用CAN2 中断
+#endif
+{
+    uDataConvert32TypeDef temp;
+    CanRxMsg RxMessage;
+    if (CAN_GetITStatus(CAN_BUS, CAN_IT_FMP0) != RESET)
+    {
+        CAN_Receive(CAN_BUS, CAN_FIFO0, &RxMessage);
+        switch (RxMessage.StdId)
+        {
+        case GYRO_ID:									//模块 ID 默认为 0x011
+            if (RxMessage.DLC == 4)		//接收角度
+            {
+                temp.u8_form[0] = RxMessage.Data[0];
+                temp.u8_form[1] = RxMessage.Data[1];
+                temp.u8_form[2] = RxMessage.Data[2];
+                temp.u8_form[3] = RxMessage.Data[3];
+                memcpy((void *)&GYRO_Angle_Now, &temp.float_form, 4);
+				encoderA = (s16)TIM2->CNT;
+				TIM_SetCounter(TIM2, 0x00);
+
+				encoderB = (s16)TIM5->CNT;
+				TIM_SetCounter(TIM5, 0x00);
+
+				//代入数据解算坐标
+				Coord_Calculte(encoderA, encoderB, GYRO_Angle_Now);
+
+            }
+//            else if (RxMessage.DLC == 8)	//接收位置信息
+//            {
+//	            temp.u8_form[0] = RxMessage.Data[0];
+//                temp.u8_form[1] = RxMessage.Data[1];
+//                temp.u8_form[2] = RxMessage.Data[2];
+//                temp.u8_form[3] = RxMessage.Data[3];
+//                memcpy((void *)&GYRO_pulse_x, &temp.s32_form, 4);
+//
+//
+//                temp.u8_form[0] = RxMessage.Data[4];
+//                temp.u8_form[1] = RxMessage.Data[5];
+//                temp.u8_form[2] = RxMessage.Data[6];
+//                temp.u8_form[3] = RxMessage.Data[7];
+//                memcpy((void *)&GYRO_pulse_y, &temp.s32_form, 4);
+////*************************************************************************************************************//以上为自己读编码器的值解算坐标
+				GYRO_Location.x = (float)coordX*Coder_Param;//看好这个xy的方向和符号
+				GYRO_Location.y = (float)coordY*Coder_Param;
+				GYRO_Location.Angle = GYRO_Angle_Now;
+//
+//            }
+            break;
+        default:
+            break;
+        }
+		Robot_Location_Update();
+
+		//int x = GYRO_Location.x, y = GYRO_Location.y, angle = GYRO_Location.Angle, Cur_speed=G_Robot_Master.cur_speed;
+		//printf("\r\n%d\t%d\t%d\t%d\r\n", x, y, angle, Cur_speed);
+        CAN_ClearITPendingBit(CAN_BUS, CAN_IT_FMP0);
+    }
+}
+
+#endif // GYRO_USE_INT_INNER
+
+
+#ifdef __cplusplus
+}
+#endif
+/******************* (C) COPYRIGHT 2017 李彪 ***********END OF FILE***********/

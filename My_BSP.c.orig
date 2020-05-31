@@ -1,0 +1,101 @@
+#include "My_BSP.h"
+#include "usart.h"
+#include "delay.h"
+#include "sys.h"
+#include "can.h"
+#include "beep.h"
+#include "led.h"
+#include "encoder.h"
+#include "Time.h"
+#include "Task_Loop.h"
+#include "communication.h"
+#include "usart3.h"
+#include "GYRO_Lib.h"
+#include "uart4.h"
+#include <stdint.h>
+#include "Time.h"
+#include "Timer.h"
+#include "usart2.h"
+#include "epos_N.h"
+
+//-----------------------------------------------------------------------------
+// Extern Function
+// 外部函数
+//-----------------------------------------------------------------------------
+
+/*****************************************************************************\
+* Function Name   : Init
+* Input           : uint32_t uart_bound     [初始化UART波特率]
+*                   uint8_t delay_sysclk    [系统时钟频率]
+* Output          : None
+* Return          : None
+* Description     : 板级初始化，初始化硬件
+*                   默认uart波特率为115200
+*                   默认系统时钟为168MHz
+\*****************************************************************************/
+void BSP_Init(uint32_t uart_bound,uint8_t delay_sysclk)
+{
+    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2); //设置系统中断优先级分组2
+
+
+    System_Tiem_Clear();//清空系统（滴答定时器）时间
+    SysTick_Init();//初始化滴答定时器 
+	
+    Cycle_Time_Init();//前馈确定周期开始计时
+	
+    uart1_init(uart_bound); //用printf打印数据
+		USART_Configuration();//DMA初始化，借助串口1接发数据,用USART_printf打印数据
+    usart2_init(uart_bound);//用作遥控器
+	usart3_init(uart_bound);//用作接收上位机的数据
+    uart4_init(uart_bound);//
+	
+    LED_Init();
+	
+    Timer6_Interrupt_Init(1000-1,8400-1);//定时器6初始化
+	
+    BEEP_Init();
+    BUZZER_ON;
+    Encoder_Init_TIM5();
+    Encoder_Init_TIM2();
+
+    CAN_Config();
+		
+    GYRO_Init();
+		printf(" * GYRO_Ready!\r\n");
+
+    Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+		delay_ms(100);
+		Epos_Init();    //电机驱动初始化
+    delay_ms(200);
+		
+    BUZZER_OFF;			//初始化成功
+
+}
+
+
+//软件复位函数
+void SoftReset(void)
+{
+    //__set_FAULTMASK(1);  // 关闭所有中端 
+    NVIC_SystemReset();// 软件复位 
+}
+
+

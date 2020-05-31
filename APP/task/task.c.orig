@@ -1,0 +1,395 @@
+#include "task.h"
+#include "led.h"
+#include "Control_Arc.h"
+#include "PID_Control.h"
+#include "Basal_Move.h"
+#include "Robot.h"
+/*******************************************************************************
+* @FunctionName   : Loop_check
+* @Description    : Loop_check
+* @Param          : None
+* @Retval         : None
+*******************************************************************************/
+loop_t loop;
+void Loop_check()  //TIME INTTERRUPT
+{
+    loop.time++; //u16
+	  loop.cnt_10ms++;
+    loop.cnt_20ms++;
+    loop.cnt_50ms++;
+    loop.cnt_100ms++;
+    loop.cnt_200ms++;
+    loop.cnt_500ms++;
+
+    if( loop.check_flag >= 2)
+    {
+        loop.err_flag ++;
+    }
+    else
+    {
+        loop.check_flag += 1;
+    }
+}
+
+/*******************************************************************************
+* @FunctionName   : main_loop
+* @Description    : main_loop
+* @Param          : None
+* @Retval         : None
+*******************************************************************************/
+void main_loop()
+{
+    if( loop.check_flag >= 1 )
+    {
+		   if( loop.cnt_10ms >= 10 )
+        {
+            loop.cnt_10ms = 0;
+            Duty_10ms();
+        }
+        if( loop.cnt_20ms >= 20 )
+        {
+            loop.cnt_20ms = 0;
+            Duty_20ms();
+        }
+        if( loop.cnt_50ms >= 50 )
+        {
+            loop.cnt_50ms = 0;
+            Duty_50ms();
+        }
+        if( loop.cnt_100ms >= 100 )
+        {
+            loop.cnt_100ms = 0;
+            Duty_100ms();
+        }
+        if( loop.cnt_200ms >= 200 )
+        {
+            loop.cnt_200ms = 0;
+            Duty_200ms();
+        }
+        if( loop.cnt_500ms >= 500 )
+        {
+            loop.cnt_500ms = 0;
+            Duty_500ms();
+        }
+        loop.check_flag = 0;
+    }
+}
+
+extern u8 Start_flag;
+u8 Step_flag = 1;
+int32_t Count_Flag = 0;
+extern s16 targetX, targetY1, targetA;
+
+void Duty_10ms(void)
+{
+	if(Start_flag==1)           //第一步
+		 {	 
+  			 if(Step_flag==1)          //o-->A
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N100)
+					 {
+						 Step_flag = 2;
+						 Count_Flag = 0;
+					 }
+				 }
+				  if(Step_flag==2)     //A-->B
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N60)
+					 {
+						 Step_flag = 3;
+						 Count_Flag = 0;
+					 }
+				 }
+				  if(Step_flag==3)       //B-->C
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N100)
+					 {
+						 Step_flag = 4;
+						 Count_Flag = 0;
+					 }
+				 }
+				  if(Step_flag==4)         //C-->D
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N60)
+					 {
+						 Step_flag = 5;
+						 Count_Flag = 0;
+					 }
+				 }
+				  if(Step_flag==5)       //D-->E
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N100)
+					 {
+						 Step_flag = 6;
+						 Count_Flag = 0;
+					 }
+				 }
+				  if(Step_flag==6)   //E-->F
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N60)
+					 {
+						 Step_flag = 7;
+						 Count_Flag = 0;
+					 }
+				 }
+				 	 if(Step_flag==7)      //F-->M
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N80)
+					 {
+						 Step_flag = 8;
+						 Count_Flag = 0;
+					 }
+				 }
+				 	if(Step_flag==8)         //M-->N
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N150)
+					 {
+						 Step_flag = 9;
+						 Count_Flag = 0;
+					 }
+				 }
+
+				 	if(Step_flag==9)         //N-->Q
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N20)
+					 {
+						 Step_flag = 10;
+						 Count_Flag = 0;
+					 }
+				 }
+				 
+				 	if(Step_flag==10)         //Q-->W ,去交接
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N250)
+					 {
+						 Step_flag = 11;
+						 Count_Flag = 0;	
+					 }
+				 }
+				 
+				 if(Step_flag==11)         //W-->X，交接刹车
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N40)
+					 {
+						 Step_flag = 1;
+						 Count_Flag = 0;	
+						 Start_flag = 2;
+					 }
+				 }
+		 }
+		 
+		 if(Start_flag == 3)			  //第二步：去抓兽骨		 
+		 {	      
+			 	 if(Step_flag==1)          //X--Y，角度转回，爪子张开，上层放下
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N300)
+					 {
+						 Step_flag = 2;
+						 Count_Flag = 0;
+					 }
+				 }	
+			 
+			 if(Step_flag==2)          //X--Y，角度转回，爪子张开，上层放下
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N300)
+					 {
+						 Step_flag = 1;
+						 Count_Flag = 0;
+						 Start_flag = 4;
+					 }
+				 }	 
+		 }
+		 
+		 if(Start_flag == 5)	     //第三步：抓取兽骨 且 进入等待位置
+		 {
+		     	if(Step_flag==1)          //抓取兽骨
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N20)
+					 {
+						 Step_flag = 2;
+						 Count_Flag = 0;
+					 }
+				 }	 
+				 	if(Step_flag==2)          //上层翻转
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N200)
+					 {
+						 Step_flag = 3;
+						 Count_Flag = 0;
+					 }
+				 }
+				 	if(Step_flag==3)          //Y-->Z
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N200)
+					 {
+						 Step_flag = 1;
+						 Count_Flag = 0;
+						 Start_flag = 6;
+					 }
+				 }
+			  
+		 }
+		 		 
+		 if(Start_flag == 7)        //第四步：进入投掷区 且 进行投掷
+		 {
+		 		  if(Step_flag==1)          //Z-->R
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N200)
+					 {
+						 Step_flag = 2;
+						 Count_Flag = 0;
+					 }
+				 }
+				 	if(Step_flag==2)          //R-->T
+				 {	 
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N10)
+					 {
+						 Step_flag = 3;
+						 Count_Flag = 0;
+					 }
+				 }	
+				 	if(Step_flag==3)          //车身自转
+				 {	
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N10)
+					 {
+						 Step_flag = 4;
+						 Count_Flag = 0;
+					 }
+				 }	
+				 	if(Step_flag==4)          //装置前推
+				 {	
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N100)
+					 {
+						 Step_flag = 5;
+						 Count_Flag = 0;
+					 }
+				 }
+				 	if(Step_flag==5)          //松开爪子
+				 {	
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N40)
+					 {
+						 Step_flag = 6;
+						 Count_Flag = 0;
+					 }
+				 }
+				 	if(Step_flag==6)          //抛兽骨
+				 {	
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N20)
+					 {
+						 Step_flag = 1;
+						 Count_Flag = 0;
+						 Start_flag = 8;
+					 }
+				 }
+				 
+		 }
+		 
+		 		 
+		 	if(Start_flag == 20)        //回城
+		 {
+			 		if(Step_flag==1)          //T-->Z
+				 {	
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N300)
+					 {
+						 Step_flag = 2;
+						 Count_Flag = 0;
+					 }
+				 }
+				 	if(Step_flag==2)          //Z-->Q
+				 {	
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N300)
+					 {
+						 Step_flag = 3;
+						 Count_Flag = 0;
+					 }
+				 }
+			 		if(Step_flag==3)          //Q-->O
+				 {	
+					 Count_Flag++;
+					 UpdateRoute_Arc(Count_Flag);
+					 if(Count_Flag == N300)
+					 {
+						 Step_flag = 1;
+						 Count_Flag = 0;
+						 Start_flag =21;
+					 }
+				 }
+			 
+		 }	 	
+		
+		PID_Angle_Loop_Test();    //角度--PID调节
+		PID_LineX_Loop_Test();		//X轴--PID调节
+		PID_LineY_Loop_Test();		//Y轴--PID调节
+		SetMotorSpeed();
+}
+void Duty_20ms(void)
+{
+}
+void Duty_50ms(void)
+{
+
+}
+void Duty_100ms(void)
+{
+
+}
+void Duty_200ms(void)
+{
+		LED1=!LED1;
+}
+void Duty_500ms(void)
+{
+
+}
+
+
+
+

@@ -1,0 +1,164 @@
+#include "Basal_Move.h"
+#include "My_Math.h"
+#include "PID_Parameter.h"
+#include "vect.h"
+#include "Time.h"
+#include "Robot.h"
+#include "sys.h"
+#include "uart4.h"
+#include "PID_Control.h"
+#include "usart.h"
+#include "uart4.h"
+static int32_t wheel_spd[4] = {0};
+void ClearWheelSpeed(void);
+
+void ClearWheelSpeed(void)
+{
+    memset(wheel_spd, 0, sizeof(wheel_spd));
+}
+/**
+ * @function    : rotate_speed
+ * @Description : 以线速度exp_v自转,正数逆时针，负数顺时针
+**/
+void Camera_rotate_speed(int32_t exp_v)
+{
+	int32_t spd[4] = { 0 };
+
+	spd[0] = exp_v;
+	spd[1] = exp_v;
+	spd[2] = 0;
+	spd[3] = 0;
+
+	//将速度添加到底盘速度中
+	wheel_spd[0] += spd[0];
+	wheel_spd[1] += spd[1];
+	wheel_spd[2] = 0;
+	wheel_spd[3] += spd[3];
+}
+
+
+
+void rotate_speed(int32_t exp_v)
+{
+    int32_t spd[4] = {0};
+
+    spd[0] = exp_v;
+    spd[1] = exp_v;
+    spd[2] = exp_v;
+    spd[3] = exp_v;
+
+    //将速度添加到底盘速度中
+    wheel_spd[0] += spd[0];
+    wheel_spd[1] += spd[1];
+    wheel_spd[2]  = 0;
+    wheel_spd[3] += spd[3];
+}
+
+/**
+ * @function    : linear_speed
+ * @Description : 以速度exp_v沿向量(x,y)的方向移动，alpha是车身与世界坐标y轴正方向的夹角
+**/
+void linear_speed(int32_t x, int32_t y, float alpha, int32_t exp_v)
+{
+    double spd_gain = 1;
+    int32_t spd[4] = {0};
+    int64_t Vx = x,
+            Vy = y,
+            V  = 0;
+    alpha = alpha + OFFSET_ANG; //获取车正方向的夹角
+    V  = my_sqrt(square(Vx) + square(Vy));
+    if (V == 0) spd_gain = 0;
+    else spd_gain = (double)exp_v / (double)V;
+    Vx = x * spd_gain;
+    Vy = y * spd_gain;
+
+	/*带角度*/
+	spd[0] = -Vy * my_sin(60 + alpha ) - Vx * my_cos(60 + alpha);
+	spd[1] = Vy * my_sin(60 - alpha ) - Vx * my_cos(60 - alpha );
+	spd[3] = Vy * my_sin(alpha) + Vx * my_cos(alpha );//2017.11.15.19.35 改了坐标方向最好再看看对不
+
+	///*带角度*/
+	//spd[0] = -Vy * my_sin(60 - alpha) + Vx * my_cos(60 - alpha);
+	//spd[1] = Vy * my_sin(60 + alpha) + Vx * my_cos(60 + alpha);
+	//spd[3] = -Vy * my_sin(alpha) - Vx * my_cos(alpha);
+
+    ///*带角度/
+    //spd[0] =  -Vx * my_sin(60 - alpha) + Vy * my_cos(60 - alpha) ;
+    //spd[1] =  Vx * my_sin(60 + alpha) + Vy * my_cos(60 + alpha);
+    //spd[3] =  -Vx * my_sin(alpha) - Vy * my_cos(alpha);
+
+
+    //将速度添加到底盘速度中
+    wheel_spd[0] += spd[0];
+    wheel_spd[1] += spd[1];
+    wheel_spd[2] += 0;
+    wheel_spd[3] += spd[3];
+}
+
+/**
+ * @function    :
+ * @Description : 将速度发送到elmo
+ * 三轮，只用了spd0 1 3
+**/
+extern EncodePointTypeDef GYRO_Location;
+int32_t Stop_flag=0;
+extern int32_t Task_Go_Flag;;
+void SetMotorSpeed(void)
+{
+    int32_t spd[4] = {0};
+    int32_t max_spd;		    //最大转速
+    float   percent = 0.0;	    //缩放比例
+    ///*电机线速度转换成转速  因为你给EPOS发的指令是r/min  这次用的减速比是J=21的,轮子直径是125mm
+    //转速n=wheel_spd[]*60*J/(R*2*3.14)   所以转速n=wheel_spd[]*60*21/(125*3.14)=wheel_spd[]*3.21*/
+    //spd[0] = wheel_spd[0] * 3.21;
+    //spd[1] = wheel_spd[1] * 3.21;
+    //spd[2] = wheel_spd[2] * 3.21;
+    //spd[3] = wheel_spd[3] * 3.21;
+
+    /*电机线速度转换成转速  因为你给EPOS发的指令是r/min  这次用的减速比是J=12的,轮子直径是125mm
+    转速n=wheel_spd[]*60*J/(R*2*3.14)   所以转速n=wheel_spd[]*60*12/(125*3.14)=wheel_spd[]*1.83*/
+    spd[0] = wheel_spd[0] * 1.83;
+    spd[1] = wheel_spd[1] * 1.83;
+    spd[2] = wheel_spd[2] * 1.83;
+    spd[3] = wheel_spd[3] * 1.83;
+    //清空轮子速度
+    ClearWheelSpeed();
+
+    //求得轮子速度的绝对值的最大值
+    max_spd = my_max(my_max(my_max(my_abs(spd[0]),my_abs(spd[1])),my_abs(spd[2])),my_abs(spd[3]));
+    //限速
+    if (max_spd > MAX_SPEED)
+    {
+        //根据比例缩放电机速度
+        percent = (double)MAX_SPEED / (double)max_spd;
+        spd[0] *= percent;
+        spd[1] *= percent;
+        spd[2] *= percent;
+        spd[3] *= percent;
+    }
+	if (Stop_flag == 1 || GYRO_Location.Angle<-30 || GYRO_Location.Angle>30)
+	//if (Stop_flag == 1)
+	{
+		Motor_Stop();
+	}
+    else
+    {
+        Profile_Velocity_Change(spd[0], spd[1], spd[2], spd[3]);
+    }
+
+	int v1 = spd[0], v2 = spd[1], v3 = spd[3], Cur_speed = G_Robot_Master.cur_speed, x = nloc.Coords.x , y = nloc.Coords.y, angle = nloc.Angle , Time_ms = GetSysTime_us() / 1000;//Get_Cycle_T(2);
+		USART_printf("\r\nv1  %d\tv2:  %d\t %d\t\r\n", v1, v2,v3);
+	    USART_printf("\r\n%d\t%d\t%d\t%d\t%d\r\n", x, CameraData_Centerpoint, y, (int)CameraData_Angle,angle);
+        USART_printf("\r\n%d\t%d\t%d\t%d\t%d\r\n", X_Offset_CameraTarget, Y_Offset_CameraTarget, Task_Go_Flag, CameraData_Flag,Cur_speed);
+} 
+
+/**
+* @function    :
+* @Description : 电机急停
+**/
+void Motor_Stop(void)
+{
+    ClearWheelSpeed();
+    Profile_Velocity_Stop();
+}
+

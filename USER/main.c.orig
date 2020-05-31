@@ -1,0 +1,54 @@
+#include "sys.h"
+#include "delay.h"
+#include "usart.h"
+#include "led.h"
+#include "beep.h"
+#include "key.h"
+#include "My_BSP.h"
+#include "Basal_Move.h"
+#include "GYRO_Lib.h"
+#include "My_Flag.h"
+#include "PID_Control.h"
+#include "Robot.h"
+#include "Task_Loop.h"
+#include "ANO_DT.h"
+#include "Time.h"
+#include "Route_Control.h"
+#include "uart4.h"
+#include "PID_forward.h"
+#include "Run_task.h"
+//ALIENTEK 探索者STM32F407开发板 实验4
+//串口通信实验 -库函数版本
+//技术支持：www.openedv.com
+//淘宝店铺：http://eboard.taobao.com
+//广州市星翼电子科技有限公司
+//作者：正点原子 @ALIENTEK
+int32_t Target_Angle = 0,Target_X=0,Target_Y=0;
+
+int main(void)
+{
+		int Led_Flag=0;
+	
+/*  硬件资源初始化，包括：LED灯、蜂鸣器、串口、滴答定时器、TIM6、编码器、电机驱动EPOS、CAN通信、陀螺仪等*/
+	
+		BSP_Init(115200, 168);		
+		Argument_Load();		//将上位机的数据存入flash
+    while (1)
+    {
+			PID_Angle_Loop_Test();    //角度--PID调节
+			PID_LineX_Loop_Test();		//X轴--PID调节
+			control_Yline();					//Y轴--前馈调节				
+	//	PID_LineY_Loop_Test();
+			SetMotorSpeed();					//把调节计算出来的电机速度给进
+			
+			/*    提示程序正在运行   */		
+			delay_ms(10);
+			Led_Flag++;		
+			if(Led_Flag==30)
+			{
+					LED6=!LED6;
+					Led_Flag=0;
+			}
+   }
+}
+
